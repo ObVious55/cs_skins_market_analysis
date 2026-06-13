@@ -320,5 +320,5 @@ Stop the stack:
 docker compose down
 ```
 
-https://github.com/user-attachments/assets/1509a445-269d-4658-81c3-8b7eb27a1001
+
 
