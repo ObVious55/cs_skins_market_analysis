@@ -1,26 +1,95 @@
-# Price Prediction (饰品价格预测与 RAG 辅助 AI 分析)
-
-一个用于 CS 饰品/皮肤市场的价格分析与决策支持服务，结合 RAG（retrieval-augmented generation）与向量检索，对用户自然语言查询进行候选饰品识别、价格数据汇总与 AI 分析建议。
-
-本项目包含：
-- 向量检索（EmbeddingClient + VectorStoreClient）用于候选召回（TopK）。
-- TopKQueryOptimizer：在 TopK 检索结果中精排出最可能匹配用户模糊查询的饰品名称/ID。
-- RAG 驱动的 Query 优化流程：把用户模糊追问映射到 catalog 中的具体饰品并补全信息。
-- PredictionService：基于 priceData 与最终 item 信息构造 Prompt，调用 AI 模型生成分析与建议。
-- 可用于本地调试的 HTTP 接口（/rag/refine，/api/ai/chat 等）。
+# CS饰品价格预测分析系统
 
 
-## 主要特性
+https://github.com/user-attachments/assets/e6475ce3-78f9-4d70-87c5-d68c888c7821
 
-- 模糊查询识别：用户可以直接输入自然语言（如“这把蝴蝶刀值不值得买”），系统会基于向量检索的 TopK 结果精排出候选饰品并返回置信度。
-- 自动补磨损并匹配最终 item_id：当 RAG 识别到候选但缺失磨损时，系统会尝试默认补全并在 cs_qaq_item_id 表查找匹配。
-- 对话式预测：PredictionService 提供会话上下文保存（Redis）和 Redisson 分布式锁保护，支持连续追问。
-- 调试接口：/rag/refine（GET）用于在 APIFOX 或浏览器快速验证 Query 优化效果。
+
+面向 CS2 饰品市场的 AI 分析系统，帮助用户从自然语言问题出发，快速识别目标饰品、分析价格走势，并生成可解释的买入、持有或观望建议，用户持仓分析。
+
+用户不需要准确输入完整饰品名称。
+例如输入：
+
+```
+传承最近适合入吗？
+抽象派后续还有上涨空间吗？
+```
+
+系统会结合 RAG 检索、饰品基础数据、价格走势和策略分析，自动定位目标饰品，并给出结构化的市场判断。
+
+## 项目亮点
+
+### 自然语言识别饰品
+
+用户可以直接使用模糊表达或口语化问题，系统会通过 RAG 检索和 TopK 精排，从饰品库中匹配最可能的目标饰品。
+
+支持场景包括：
+
+- 模糊名称查询
+- 中文简称查询
+- 追问中的“这个”“这把”“它”
+- 缺少磨损信息时的候选补全
+- 返回候选饰品、置信度和匹配依据
+
+### AI 辅助市场分析
+
+系统会基于饰品价格数据、历史走势和用户问题，生成面向普通用户的分析结果。
+
+分析内容包括：
+
+- 当前价格位置
+- 近期趋势判断
+- 风险提示
+- 买入、持有或观望建议
+- 适合短线还是长期关注
+- 结论背后的数据依据
+
+本项目的目标不是替代用户决策，而是把复杂的饰品市场数据转化成更容易理解的判断依据。
+
+### 策略引擎
+
+项目内置可扩展的策略分析框架，可以对单个饰品运行多种交易/观察策略。
+
+当前支持通过 YAML 定义策略规则，例如：
+
+- 缩量回踩
+- 底部放量
+- 均线金叉
+- 箱体震荡
+- 放量突破
+
+策略分析结果会被聚合为统一的信号，用于辅助 AI 生成更稳定、更有依据的市场建议。
+
+### 对话式追问
+
+系统支持连续追问。
+
+例如用户第一次问：
+
+```
+帮我看看 AK 传承能不能买
+```
+
+之后继续问：
+
+```
+那现在适合入吗？
+风险大不大？
+如果跌了应该看到什么位置？
+```
+
+系统会结合 Redis 中的上下文记录，理解用户仍然在讨论同一个饰品。
+
+### 持仓分析
+
+用户在项目里登录自己的Steam账号，Agent能够查询用户的库存，进行持仓的分析
+
+
 
 
 ## 快速开始（Windows / PowerShell）
 
 先决条件：
+
 - JDK 17+（或与 pom.xml 兼容的 Java 版本）
 - Maven（项目内含 `mvnw`，可直接使用）
 - Redis、MySQL（可选：若需要完整功能）、Qdrant（若使用向量 DB）
@@ -64,9 +133,11 @@ $env:DB_PASSWORD = "your_db_password"
 ```
 
 
+
 ## 主要 HTTP 接口
 
 1) /rag/refine
+
 - 方法：GET
 - 说明：对用户自然语言查询进行 RAG TopK 精排，返回候选及置信度，便于在 APIFOX 验证 query 优化效果。
 - 参数：
@@ -79,6 +150,7 @@ $env:DB_PASSWORD = "your_db_password"
 
 
 2) /api/ai/chat
+
 - 方法：POST
 - 说明：主对话接口，支持首次发起分析与追问（follow-up）。
 - 请求体（JSON）：
@@ -89,6 +161,7 @@ $env:DB_PASSWORD = "your_db_password"
   - priceData (object) - （首次请求可选）若包含则表示前端已预先拉取并传入价格快照
 
 - 示例（首次）：
+
 ```json
 {
   "steamId": "76561198754572993",
@@ -99,6 +172,7 @@ $env:DB_PASSWORD = "your_db_password"
 ```
 
 - 示例（追问，带 header 回退或直接 body 传 steamId）：
+
 ```json
 {
   "steamId": "76561198754572993",
@@ -110,46 +184,9 @@ $env:DB_PASSWORD = "your_db_password"
 
 注意：为避免出现 "用户: null, 内容: null" 的日志问题，请确保追问请求包含 `steamId` 或在请求头添加 `X-User-Id`（服务端会回退读取 header 中的用户 id）。推荐始终在请求体传入 `steamId`。
 
+## 饰品数据来源
 
-## Query 优化（RAG -> TopK 精排）说明
-
-系统在 `ItemRagRetriever.retrieveAndOptimize` 中：
-1. 使用 `EmbeddingClient` 对用户 query 生成向量，调用 `VectorStoreClient.search` 得到 TopK 候选
-2. `TopKQueryOptimizer` 对候选做精排：
-   - 向量分数归一化
-   - 词匹配覆盖率（query token 与候选名称 token 的匹配）
-   - metadata 存在性加权
-   - 最终按照加权分数排序并去重，返回 topN（默认 10）与 primary 候选与置信度
-3. Controller（或 PredictionService）会根据置信度阈值（默认 0.6）决定是否替换为最终名称或 itemId
-
-阈值建议：生产环境可设为 0.7–0.8 更保守，逐步放宽至 0.6 在有人工反馈后。
-
-
-## 在 APIFOX 中验证（示例场景）
-
-1) 验证 /rag/refine
-- 新建 GET 请求
-- URL: `http://localhost:3000/rag/refine`
-- Query 参数：q = "这把蝴蝶刀能不能买"，topK = 50
-- 发送并查看返回 JSON 中的 `primaryName` 与 `confidence`
-
-2) 验证对话流程
-- 新建 POST 请求
-- URL: `http://localhost:3000/api/ai/chat`
-- Headers: Content-Type: application/json, 可选 X-User-Id
-- Body: 使用上文的 JSON 示例（首次包含 priceData 或在追问中包含 steamId）
-- 若观察到日志中 `用户: null`，请检查请求是否确实包含 `steamId` 或 X-User-Id
-
-
-## 常见问题与排查
-
-- 日志显示 "AI对话请求 - 用户: null, 内容: null"：
-  - 原因：前端追问请求没有在 body 中带 steamId，也没有在 header 中带 X-User-Id，导致 Controller 无法解析到用户 id 与 message
-  - 解决：在追问中依然带上 steamId，或在 header 中带上 `X-User-Id`；服务端已支持 header 回退逻辑
-
-- RAG 未识别出饰品或置信度低：
-  - 检查向量模型与向量库（embedding.provider / qdrant 配置）
-  - 增加 topK 尝试（例如 50）或调整 TopKQueryOptimizer 的权重
+csqaq.com
 
 
 ## 开发与调试建议
@@ -163,7 +200,7 @@ $env:DB_PASSWORD = "your_db_password"
 
 项目内置了一套可扩展的策略框架，用于对单个饰品运行规则/策略集并产出合成的买卖信号（Strategy Analysis）。主要实现要点如下：
 
-- 策略定义：位于 `strategies/` 目录下的 YAML 文件（例如 `bottom_volume.yaml`、`ma_golden_cross.yaml` 等），每个文件包含策略名称、描述、规则要点与执行提示。你可以通过新增 YAML 文件实现新的策略。
+- 策略定义：位于 `strategies/` 目录下的 YAML 文件（例如 `bottom_volume.yaml`），每个文件包含策略名称、描述、规则要点与执行提示。你可以通过新增 YAML 文件实现新的策略。
 - StrategyEngine：Java 端的策略执行器，负责把策略 YAML 装载为可执行策略（StrategySkill），运行历史价格 / 成交数据（通过 `ApiDataService` 提供）并返回 `StrategyAnalysisResult`。
 - ta4j：对于需要回测或以时间序列指标为基础的策略，项目在策略引擎内部使用 ta4j（或 ta4j 风格的指标计算）来计算指标、信号并对 K 线/时间序列进行分析。
 
@@ -180,6 +217,7 @@ AiTools 中的策略工具（Agent skill）
 - `@Tool(name = "runItemStrategyAnalysis")` —— 方法签名 `public StrategyAnalysisResult runItemStrategyAnalysis(String itemId)`。
 
 该 Tool 的行为：
+
 - 接收 `itemId`（或可调整为接收 market_hash_name 并在内部查映射），调用 `StrategyEngine.analyze(itemId)` 并返回 `StrategyAnalysisResult`，对传入参数做基本校验并在异常时返回可读的默认 `StrategyAnalysisResult`。
 
 如何在 Agent / Langchain4j 场景中使用：
@@ -215,11 +253,30 @@ System.out.println(res.getSummary());
 - 策略分析需要保证不可随意生成虚假的价格/成交数据。StrategySkill 在生成结论时应始终包含“依据数据来源”的说明（例如：基于 BUFF 近 30 日成交/在售数）。
 - 推荐在 `StrategyAnalysisResult.summary` 中增加 `explain` 字段或在 `signals` 中详细列出触发规则，便于审计与用户展示。
 
+## 项目结构
 
+```
+src/main/java/com/example/priceprediction
+├── controller      # HTTP 接口
+├── service         # 核心业务逻辑
+├── rag             # RAG 检索与 Query 优化
+├── strategy        # 策略引擎
+├── repository      # 数据访问层
+├── entity          # 数据库实体
+├── dto             # 请求与响应对象
+└── config          # 配置类
+```
+
+策略配置位于：
+
+```
+src/strategies/
+```
 
 ## 贡献指南
 
 欢迎提交 PR：
+
 - Fork 本仓库
 - 新建 feature 分支
 - 编写单元测试（或调试脚本）并提交
@@ -262,3 +319,6 @@ Stop the stack:
 ```powershell
 docker compose down
 ```
+
+https://github.com/user-attachments/assets/1509a445-269d-4658-81c3-8b7eb27a1001
+
