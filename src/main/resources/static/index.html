@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS饰品价格预测系统</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.3.3/dist/echarts.min.js"></script>
+    <!-- 引入 marked 库用于解析 Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div id="auth-section" class="auth-section">
+                <div id="unauthenticated">
+                    <a href="http://localhost:3000/api/auth/steam/login" class="steam-login-link">
+                        <img src="https://community.cloudflare.steamstatic.com/public/images/signinthroughsteam/sits_01.png" alt="使用Steam登录">
+                    </a>
+                </div>
+                <div id="authenticated" style="display: none;">
+                    <div class="user-profile">
+                        <img id="userAvatar" src="" alt="头像">
+                        <span id="userName">加载中...</span>
+                        <button id="syncInventoryBtn" style="background-color: #4CAF50; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin: 0 10px;">同步库存</button>
+                        <button id="analyzeHoldingsBtn" style="background-color: #FF9800; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin: 0 10px;">持仓分析</button>
+                        <button id="logoutBtn" onclick="logout()">退出</button>
+                    </div>
+                </div>
+            </div>
+
+            <h1>CS饰品价格预测系统</h1>
+            <p>基于AI大模型的智能价格分析</p>
+        </header>
+
+        <main>
+            <section class="search-section">
+                <div class="search-box">
+                    <input type="text" id="itemSearch" placeholder="输入饰品名称进行搜索..." />
+                    <button id="searchBtn">搜索</button>
+                </div>
+    
+                <div class="item-selector" id="itemSelector" style="display: none;">
+                    <label for="itemDropdown">选择具体饰品：</label>
+                    <select id="itemDropdown">
+                        <option value="">请选择...</option>
+                    </select>
+                    <button id="selectItemBtn">查看价格</button>
+                </div>
+            </section>
+
+            <section class="results-section">
+                <div class="price-data-card" id="priceDataCard" style="display: none;">
+                    <h2>价格数据</h2>
+                    <div class="price-info">
+                        <div class="current-price">
+                            <span class="label">当前价格:</span>
+                            <span class="price" id="currentPrice">-</span>
+                        </div>
+                        <div class="price-change">
+                            <span class="label">7日涨跌幅:</span>
+                            <span class="change" id="priceChange">-</span>
+                        </div>
+                    </div>
+
+                    <div class="price-chart" id="priceChart">
+                        </div>
+                    <div class="sales-chart" id="salesChartContainer" style="display: none;">
+                        <div class="chart-header">
+                            <h4>供需趋势 (30天)</h4>
+                            <div class="platform-selector">
+                                <label for="salesPlatformSelector">平台选择:</label>
+                                <select id="salesPlatformSelector">
+                                    <option value="1">BUFF</option>
+                                    <option value="2">悠悠有品</option>
+                                    <option value="3">Steam</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="salesChart" style="width: 100%; height: 250px;"></div>
+                    </div>
+                </div>
+
+                <div class="prediction-card" id="predictionCard" style="display: none;">
+                    <h2 id="predictionTitle">AI价格预测</h2>
+                    <button id="clearChatBtn" style="float: right; background: #f44336; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; display: none;">清空对话</button>
+                    <div class="prediction-content">
+                        <div class="loading" id="loadingSpinner" style="display: none;">
+                            <div class="spinner"></div>
+                            <p id="loadingText">AI正在分析价格数据...</p>
+                        </div>
+
+                        <!-- 1. 初始大报告展示区 -->
+                        <div class="prediction-result markdown-content" id="predictionResult"></div>
+
+                        <!-- 2. 🌟 新增：对话历史展示区（追问的内容会显示在这里） -->
+                        <div id="chatHistory" class="chat-history-container"></div>
+                    </div>
+
+                    <!-- 3. 🌟 新增：输入追问区（初始隐藏，预测成功后显示） -->
+                    <div id="followUpInputArea" class="follow-up-area" style="display: none;">
+                        <div class="input-wrapper">
+                            <input type="text" id="userQuestion" placeholder="你可以继续追问..." />
+                            <button id="sendQuestionBtn" class="send-icon-btn">发送</button>
+                        </div>
+                    </div>
+
+                    <!-- 原始预测按钮 -->
+                    <button id="predictBtn" class="predict-button">开始预测</button>
+                </div>
+
+            </section>
+            
+            <section class="recommendations">
+                <h2>热门饰品</h2>
+                <div class="item-grid" id="hotItems">
+                    </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>© 2025 CS饰品价格预测系统</p>
+            <p>数据来源: CSQAQ | 分析引擎: OPENAI</p>
+            <p>本站仅供学习交流使用，所有数据及分析仅供参考，不构成任何投资建议</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

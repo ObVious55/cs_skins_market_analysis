@@ -1,0 +1,13 @@
+.git
+.gitignore
+.idea
+.vscode
+target
+build
+logs
+*.log
+*.iml
+.env
+.env.*
+!.env.example
+HELP.md

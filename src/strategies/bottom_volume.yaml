@@ -1,0 +1,104 @@
+# CS Item Bottom Volume Surge Strategy / CS饰品底部放量
+# After extended decline, item unit price stabilizes and transaction activity spikes. Potential reversal.
+
+name: bottom_volume
+display_name: CS饰品底部放量
+description: 检测 CS 饰品长期下跌后，单价企稳并伴随成交活跃度放大的潜在反转信号。
+category: reversal
+category: reversal
+core_rules: [2, 5]
+
+required_tools:
+  - get_item_daily_history
+  - analyze_item_trend
+  - get_item_realtime_quote
+  - search_item_news
+
+aliases:
+  - 饰品地量见底
+  - 饰品底部放量
+  - 底部放量
+
+default_active: true
+default_priority: 60
+
+market_regimes:
+  - trending_down
+
+instructions: |
+  **CS饰品底部放量（CS Item Bottom Volume Surge Strategy）**
+
+  说明：本策略中“价格/股价”统一理解为 **饰品单价**，优先使用成交均价、最低可售价格或平台聚合单价作为价格口径。成交量优先理解为 **成交笔数/成交额/成交活跃度**，若平台无成交量字段，可用挂单变化、在售量变化与买卖价差辅助判断。
+
+  反转判定标准：
+
+  1. **持续下跌确认**：
+     - 使用 `get_item_daily_history` 获取近 30~60 日单价、成交量、在售量数据。
+     - 饰品单价从 20 日高点到近期低点跌幅 > 15%。
+     - `analyze_item_trend` → trend_status 应为 BEAR 或 STRONG_BEAR。
+     - 若该饰品属于高流动性热门品类，可适当提高下跌阈值；若属于低流动性冷门饰品，需谨慎对待偶发成交导致的假跌幅。
+
+  2. **成交活跃度异动**：
+     - 当日成交量/成交额 > 5 日均值的 3 倍。
+     - 使用 `get_item_realtime_quote` → volume_ratio > 3.0。
+     - 该异动最好出现在前期极度缩量、买卖价差收敛或在售量下降之后。
+
+  3. **单价企稳**：
+     - 当日 K 线收阳：收盘单价 > 开盘单价。
+     - 单价守住近期低点，未继续出现破位成交。
+     - 最好出现长下影线或低价成交后快速回收，显示低价承接。
+
+  4. **确认因素（风险排查）**：
+     - 通过 `search_item_news` 检查是否存在版本更新、赛事热度、主播/职业选手带动、箱子/收藏品供给变化等催化。
+     - 观察在售量是否下降、买盘挂单是否增强、买卖价差是否缩小。
+     - 对冷门饰品，单笔大额成交不能单独视为放量反转。
+
+  5. **风险提示**：
+     - 这是反转信号，风险高于趋势跟踪。
+     - 资金占比建议较小，避免一次性重仓囤货。
+     - 止损必须严格，可设在近期低点下方，或在跌破低点后减少库存。
+
+  评分调整：
+  - 饰品底部放量确认：sentiment_score +8
+  - 配合阳线 + 明确市场催化：额外 +5
+  - 低价承接明显、在售量下降：额外 +3
+  - 在 `buy_reason` 和 `pattern_analysis` 中注明"CS饰品底部放量"。
+  - 止损设在近期低点或关键支撑单价下方。
+
+executable_rules:
+  decline_confirm:
+    lookback_high_days: 20
+    recent_low_days: 7
+    min_decline_pct: 15.0
+    allowed_trend_status:
+      - BEAR
+      - STRONG_BEAR
+
+  volume_surge:
+    avg_volume_days: 5
+    min_volume_ratio: 3.0
+
+  price_stabilize:
+    require_bullish_candle: true
+    max_break_recent_low_pct: 0.0
+    min_lower_shadow_ratio: 0.25
+
+score_rules:
+  base_score: 0
+  adjustments:
+    - name: decline_confirmed
+      delta: 5
+    - name: volume_surge_confirmed
+      delta: 8
+    - name: price_stabilized
+      delta: 5
+    - name: lower_shadow_support
+      delta: 3
+    - name: break_recent_low
+      delta: -20
+
+risk_control:
+  max_position_ratio: 0.15
+  stop_loss:
+    type: recent_low
+    buffer_pct: 2.0

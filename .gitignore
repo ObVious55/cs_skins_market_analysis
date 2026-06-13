@@ -1,0 +1,56 @@
+HELP.md
+*.md
+!README.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+src/strategies/*
+!src/strategies/bottom_volume.yaml
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Environment Variables (敏感配置文件) ###
+.env
+.env.local
+.env.*.local
+!env.example
+
+### Application Config (包含密钥的配置文件) ###
+src/main/resources/application-local.yml
+src/main/resources/application-prod.yml
+*.properties.local
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Logs ###
+*.log
+logs/

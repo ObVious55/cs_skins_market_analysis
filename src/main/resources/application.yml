@@ -1,0 +1,83 @@
+server:
+  port: ${SERVER_PORT:3000}
+
+app:
+  csqaq:
+    base-url: ${CSQAQ_BASE_URL:https://api.csqaq.com/api/v1}
+    api-token: ${CSQAQ_API_TOKEN}
+    kline-base-url: ${CSQAQ_KLINE_BASE_URL:https://private-api.csqaq.com/api/v1}
+    kline-api-token: ${CSQAQ_KLINE_API_TOKEN}
+  openai:
+    base-url: ${OPENAI_BASE_URL:https://api.deepseek.com}
+    api-key: ${OPENAI_API_KEY}
+  steam:
+    api-key: ${STEAM_API_KEY}
+
+spring:
+  # Redis 配置
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DATABASE:0}
+      lettuce:
+        pool:
+          max-active: ${REDIS_MAX_ACTIVE:8}
+
+  # MySQL数据库配置
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/price_prediction?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=utf-8}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+    # 3. JPA/Hibernate 配置
+  jpa:
+    database-platform: org.hibernate.dialect.MySQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+cs:
+  item:
+    import-enabled: false
+    json-location: classpath*:data/CS_item/steam/*.json
+    rag-index-enabled: false
+  qaq-item-id:
+    import-enabled: false
+    json-location: classpath*:data/CS_item/qaq/*.json
+
+embedding:
+  provider: ollama
+  ollama:
+    url: http://localhost:11434
+    model: bge-m3
+
+qdrant:
+  url: http://localhost:6333
+  collection-name: cs_item_rag_bge_m3
+  vector-size: 1024
+
+  # Kafka 配置
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: inventory-refresh-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+# 日志配置 - 关闭 Hibernate SQL 日志
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+    com.example.priceprediction: DEBUG
