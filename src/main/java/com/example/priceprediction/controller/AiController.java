@@ -3,12 +3,18 @@ package com.example.priceprediction.controller;
 import com.example.priceprediction.common.Result;
 import com.example.priceprediction.dto.ChatRequest;
 import com.example.priceprediction.entity.CsQaqItemIdEntity;
+import com.example.priceprediction.entity.ItemAliasMappingEntity;
 import com.example.priceprediction.rag.ItemRagRetriever;
+import com.example.priceprediction.rag.RefinedCandidate;
 import com.example.priceprediction.rag.RefinementResult;
 import com.example.priceprediction.service.CsQaqItemIdLookupService;
 import com.example.priceprediction.service.InventoryAgent;
+import com.example.priceprediction.service.ItemAliasLearningService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Optional;
 
@@ -17,16 +23,22 @@ import java.util.Optional;
 @RequestMapping("/api/ai")
 public class AiController {
 
+    private static final double RAG_CONFIRMATION_THRESHOLD = 0.60;
+    private static final int CONFIRMATION_CANDIDATE_LIMIT = 3;
+
     private final InventoryAgent inventoryAgent;
     private final ItemRagRetriever itemRagRetriever;
     private final CsQaqItemIdLookupService csQaqItemIdLookupService;
+    private final ItemAliasLearningService itemAliasLearningService;
 
     public AiController(InventoryAgent inventoryAgent,
                         ItemRagRetriever itemRagRetriever,
-                        CsQaqItemIdLookupService csQaqItemIdLookupService) {
+                        CsQaqItemIdLookupService csQaqItemIdLookupService,
+                        ItemAliasLearningService itemAliasLearningService) {
         this.inventoryAgent = inventoryAgent;
         this.itemRagRetriever = itemRagRetriever;
         this.csQaqItemIdLookupService = csQaqItemIdLookupService;
+        this.itemAliasLearningService = itemAliasLearningService;
     }
 
     @PostMapping("/chat")
@@ -35,167 +47,121 @@ public class AiController {
         String userMessage = request.getMessage();
         boolean isFollowUp = request.isFollowUp();
 
-        log.info("AI对话请求 - 用户: {}, 内容: {}, 是否追问: {}", memoryId, userMessage, isFollowUp);
-
-        if (!isFollowUp) {
-            try {
-                String response = inventoryAgent.chat(memoryId, userMessage);
-                return Result.success(response);
-            } catch (Exception e) {
-                log.error("AI 对话发生异常: ", e);
-                return Result.error("AI 顾问暂时走神了，请稍后再试");
-            }
-        }
+        log.info("AI chat request, user={}, followUp={}, message={}", memoryId, isFollowUp, userMessage);
 
         try {
-            String optimizedMessage = optimizeMessageByRag(userMessage);
-            log.info("RAG优化后的问题：{}", optimizedMessage);
+            RagOptimizationResult optimization = optimizeMessageByRag(memoryId, userMessage);
+            if (optimization.requiresConfirmation()) {
+                log.info("RAG confidence is low; ask user to confirm before tool calling. message={}", userMessage);
+                return Result.success(optimization.reply());
+            }
 
-            String response = inventoryAgent.chat(memoryId, optimizedMessage);
+            String response = inventoryAgent.chat(memoryId, optimization.agentPrompt());
             return Result.success(response);
         } catch (Exception e) {
-            log.error("RAG 优化发生异常: ", e);
+            log.error("RAG optimization failed", e);
             return Result.error("RAG 优化发生异常，请稍后再试");
         }
     }
 
-    private String optimizeMessageByRag(String userMessage) {
+    private RagOptimizationResult optimizeMessageByRag(String memoryId, String userMessage) {
         try {
-            log.info("开始执行 RAG Query 优化，原始问题: {}", userMessage);
+            log.info("Start RAG query optimization, originalMessage={}", userMessage);
 
-            RefinementResult rr = itemRagRetriever.retrieveAndOptimize(userMessage, 50);
-
-            if (rr == null) {
-                log.info("RAG 返回为空，使用原始问题");
-                return userMessage;
+            Optional<RagOptimizationResult> learnedAlias = tryLearnPendingAlias(memoryId, userMessage);
+            if (learnedAlias.isPresent()) {
+                return learnedAlias.get();
             }
 
-            String ragPrimaryName = rr.getPrimaryName();
-            double confidence = rr.getConfidence();
+            Optional<ItemAliasMappingEntity> aliasHit = itemAliasLearningService.findAliasForQuery(userMessage);
+            if (aliasHit.isPresent()) {
+                return buildAliasHitPrompt(userMessage, aliasHit.get());
+            }
 
-            log.info("RAG结果 - primaryName: {}, confidence: {}", ragPrimaryName, confidence);
+            RefinementResult refinement = itemRagRetriever.retrieveAndOptimize(userMessage, 50);
+            if (refinement == null) {
+                return RagOptimizationResult.continueWith(userMessage);
+            }
+
+            String ragPrimaryName = refinement.getPrimaryName();
+            double confidence = refinement.getConfidence();
+            log.info("RAG result, primaryName={}, confidence={}", ragPrimaryName, confidence);
 
             if (ragPrimaryName == null || ragPrimaryName.isBlank()) {
-                return """
+                return RagOptimizationResult.continueWith("""
                         用户原始问题：
                         %s
-                        
+
                         系统约束：
                         本次没有从饰品库中可靠识别到新的饰品。
                         如果用户说“这个”“这把”“它”，默认指当前对话中的饰品。
-                        不允许编造不存在的饰品名称。
-                        """.formatted(userMessage);
+                        不允许编造不存在的饰品名称、item_id、价格或成交数据。
+                        """.formatted(userMessage));
             }
 
-            if (confidence < 0.6) {
-                return """
-                        用户原始问题：
-                        %s
-                        
-                        RAG 检索结果置信度较低：
-                        - 候选饰品：%s
-                        - 置信度：%.2f
-                        
-                        系统约束：
-                        这个 RAG 结果只能作为弱参考。
-                        如果不确定用户说的是哪个饰品，请明确说明不确定。
-                        不允许编造不存在的饰品名称。
-                        """.formatted(
-                        userMessage,
-                        ragPrimaryName,
-                        confidence
-                );
+            if (confidence < RAG_CONFIRMATION_THRESHOLD) {
+                itemAliasLearningService.savePendingAlias(memoryId, userMessage);
+                return RagOptimizationResult.askConfirmation(buildLowConfidenceConfirmation(refinement));
             }
 
-            /*
-             * 关键点：
-             * 这里不要在 Controller 里自己补磨损。
-             *
-             * findByRagPrimaryName 内部应该完成：
-             * 1. 先用 ragPrimaryName 原名查 cs_qaq_item_id
-             * 2. 如果查不到，并且 ragPrimaryName 没有磨损值，就补默认磨损再查
-             * 3. 如果查到了，返回最终的 CsQaqItemIdEntity
-             */
             Optional<CsQaqItemIdEntity> qaqItemOpt =
                     csQaqItemIdLookupService.findByRagPrimaryName(ragPrimaryName);
 
             if (qaqItemOpt.isEmpty()) {
                 log.warn(
-                        "RAG 识别到饰品，但 cs_qaq_item_id 未找到映射，ragPrimaryName: {}, confidence: {}",
+                        "RAG matched an item but cs_qaq_item_id mapping was not found, ragPrimaryName={}, confidence={}",
                         ragPrimaryName,
                         confidence
                 );
 
-                return """
+                return RagOptimizationResult.continueWith("""
                         用户原始问题：
                         %s
-                        
+
                         RAG 初步识别结果：
                         - 初步饰品名称：%s
                         - 置信度：%.2f
-                        
-                        系统已经尝试：
-                        1. 先使用 RAG 初步饰品名称查询 cs_qaq_item_id。
-                        2. 如果初步饰品名称没有磨损信息，则默认补全“崭新出厂 / Factory New”后再次查询。
-                        
-                        但是仍然没有在 cs_qaq_item_id 表中找到该饰品对应的 item_id。
-                        
+
+                        系统已经尝试用该名称查询 cs_qaq_item_id，并在缺少磨损时尝试默认补全磨损，但仍未找到 item_id。
+
                         重要约束：
                         1. 可以使用 RAG 初步识别出的饰品名称回答。
-                        2. 不允许编造 item_id。
-                        3. 不允许让模型自行发明新的磨损版本。
-                        4. 如果后续接口必须依赖 item_id，则说明当前缺少饰品 ID 映射。
-                        5. 不允许编造价格、成交量、供需数据。
-                        """.formatted(
-                        userMessage,
-                        ragPrimaryName,
-                        confidence
-                );
+                        2. 不允许编造 item_id、磨损版本、价格、成交量或 K 线数据。
+                        3. 如果后续接口必须依赖 item_id，请说明当前缺少饰品 ID 映射。
+                        """.formatted(userMessage, ragPrimaryName, confidence));
             }
 
-            /*
-             * 如果补磨损后查到了，qaqItem 就是 MySQL 里的最终饰品结果。
-             * 例如：
-             * ragPrimaryName = "USP-S | 枪响人亡"
-             * 最终可能查到：
-             * finalCnName = "USP-S | 枪响人亡 (崭新出厂)"
-             * finalMarketHashName = "USP-S | Kill Confirmed (Factory New)"
-             */
             CsQaqItemIdEntity qaqItem = qaqItemOpt.get();
-
             Long finalItemId = qaqItem.getItemId();
             String finalCnName = qaqItem.getCnName();
             String finalMarketHashName = qaqItem.getMarketHashName();
 
             log.info(
-                    "饰品最终匹配成功 - RAG初步名称: {}, 最终itemId: {}, 最终中文名: {}, 最终marketHashName: {}",
+                    "Final item matched, ragPrimaryName={}, itemId={}, cnName={}, marketHashName={}",
                     ragPrimaryName,
                     finalItemId,
                     finalCnName,
                     finalMarketHashName
             );
 
-            return """
+            return RagOptimizationResult.continueWith("""
                     用户原始问题：
                     %s
-                    
+
                     RAG 初步识别结果：
                     - 初步饰品名称：%s
                     - 置信度：%.2f
-                    
+
                     系统已通过 cs_qaq_item_id 表完成最终饰品匹配：
                     - 最终 item_id：%d
                     - 最终中文名：%s
                     - 最终 Steam market_hash_name：%s
-                    
+
                     重要约束：
                     1. 用户当前追问的饰品，必须以“最终饰品匹配结果”为准。
-                    2. 不要把 RAG 初步饰品名称当作最终饰品名称。
-                    3. 如果 RAG 初步名称没有磨损信息，系统已经在查询服务中默认补全“崭新出厂 / Factory New”并重新查询 MySQL。
-                    4. 后续如果调用 QAQ / 价格 / K线接口，必须优先使用 item_id：%d。
-                    5. 回答用户时，优先使用最终中文名：%s。
-                    6. 不允许编造其他饰品、其他磨损、其他 item_id。
-                    7. 如果没有实时价格、成交量、K线数据，不要编造，只能说明数据不足。
+                    2. 如果后续调用 QAQ / 价格 / K 线接口，必须优先使用 item_id：%d。
+                    3. 回答用户时，优先使用最终中文名：%s。
+                    4. 不允许编造其它饰品、其它磨损、其它 item_id、价格、成交量或 K 线数据。
                     """.formatted(
                     userMessage,
                     ragPrimaryName,
@@ -205,11 +171,167 @@ public class AiController {
                     finalMarketHashName,
                     finalItemId,
                     finalCnName
-            );
+            ));
 
         } catch (Exception e) {
-            log.warn("RAG Query 优化失败，使用原始问题继续", e);
-            return userMessage;
+            log.warn("RAG query optimization failed; continue with original message", e);
+            return RagOptimizationResult.continueWith(userMessage);
+        }
+    }
+
+    private Optional<RagOptimizationResult> tryLearnPendingAlias(String memoryId, String confirmationMessage) {
+        Optional<String> pendingAlias = itemAliasLearningService.getPendingAlias(memoryId);
+        if (pendingAlias.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Optional<CsQaqItemIdEntity> confirmedItem = resolveConfirmedItem(confirmationMessage);
+        if (confirmedItem.isEmpty()) {
+            return Optional.empty();
+        }
+
+        CsQaqItemIdEntity item = confirmedItem.get();
+        Optional<ItemAliasMappingEntity> learnedAlias =
+                itemAliasLearningService.learnAlias(pendingAlias.get(), item);
+        itemAliasLearningService.clearPendingAlias(memoryId);
+
+        if (learnedAlias.isEmpty()) {
+            log.warn(
+                    "Alias learning skipped because alias conflicts with another item, alias={}, itemId={}",
+                    pendingAlias.get(),
+                    item.getItemId()
+            );
+        } else {
+            log.info(
+                    "Alias learned, alias={}, itemId={}, cnName={}, marketHashName={}",
+                    pendingAlias.get(),
+                    item.getItemId(),
+                    item.getCnName(),
+                    item.getMarketHashName()
+            );
+        }
+
+        return Optional.of(buildConfirmedAliasPrompt(confirmationMessage, pendingAlias.get(), item));
+    }
+
+    private Optional<CsQaqItemIdEntity> resolveConfirmedItem(String confirmationMessage) {
+        Optional<CsQaqItemIdEntity> directMatch =
+                csQaqItemIdLookupService.findByRagPrimaryName(confirmationMessage);
+        if (directMatch.isPresent()) {
+            return directMatch;
+        }
+
+        RefinementResult refinement = itemRagRetriever.retrieveAndOptimize(confirmationMessage, 50);
+        if (refinement == null
+                || refinement.getPrimaryName() == null
+                || refinement.getPrimaryName().isBlank()
+                || refinement.getConfidence() < RAG_CONFIRMATION_THRESHOLD) {
+            return Optional.empty();
+        }
+
+        return csQaqItemIdLookupService.findByRagPrimaryName(refinement.getPrimaryName());
+    }
+
+    private RagOptimizationResult buildAliasHitPrompt(String userMessage, ItemAliasMappingEntity alias) {
+        return RagOptimizationResult.continueWith("""
+                用户原始问题：
+                %s
+
+                系统已从用户别名表命中标准饰品：
+                - 用户别名：%s
+                - 最终 item_id：%d
+                - 最终中文名：%s
+                - 最终 Steam market_hash_name：%s
+
+                重要约束：
+                1. 用户当前追问的饰品，必须以上面的别名映射结果为准。
+                2. 如果后续调用 QAQ / 价格 / K 线接口，必须优先使用 item_id：%d。
+                3. 回答用户时，优先使用最终中文名：%s。
+                4. 不允许编造其它饰品、其它磨损、其它 item_id、价格、成交量或 K 线数据。
+                """.formatted(
+                userMessage,
+                alias.getAlias(),
+                alias.getItemId(),
+                alias.getCnName(),
+                alias.getMarketHashName(),
+                alias.getItemId(),
+                alias.getCnName()
+        ));
+    }
+
+    private RagOptimizationResult buildConfirmedAliasPrompt(
+            String confirmationMessage,
+            String learnedAlias,
+            CsQaqItemIdEntity item
+    ) {
+        return RagOptimizationResult.continueWith("""
+                用户刚刚确认了一个饰品别名：
+                - 用户原始别名：%s
+                - 用户确认名称：%s
+
+                系统已将该别名学习为标准饰品：
+                - 最终 item_id：%d
+                - 最终中文名：%s
+                - 最终 Steam market_hash_name：%s
+
+                重要约束：
+                1. 本轮回答必须基于用户确认后的标准饰品。
+                2. 如果后续调用 QAQ / 价格 / K 线接口，必须优先使用 item_id：%d。
+                3. 后续其他用户再次使用该别名时，系统会优先命中 item_alias_mapping。
+                4. 不允许编造其它饰品、其它磨损、其它 item_id、价格、成交量或 K 线数据。
+                """.formatted(
+                learnedAlias,
+                confirmationMessage,
+                item.getItemId(),
+                item.getCnName(),
+                item.getMarketHashName(),
+                item.getItemId()
+        ));
+    }
+
+    private String buildLowConfidenceConfirmation(RefinementResult refinement) {
+        StringBuilder reply = new StringBuilder();
+        reply.append("我不太确定你指的是哪个饰品，先不直接查询价格或 K 线，避免拿错数据。\n\n");
+        reply.append("我目前最接近的候选是：\n");
+
+        int count = 0;
+        if (refinement.getCandidates() != null) {
+            for (RefinedCandidate candidate : refinement.getCandidates()) {
+                if (candidate == null || candidate.getName() == null || candidate.getName().isBlank()) {
+                    continue;
+                }
+                count++;
+                reply.append(count)
+                        .append(". ")
+                        .append(candidate.getName())
+                        .append("（置信度 ")
+                        .append(String.format("%.2f", Math.min(1.0, candidate.getScore())))
+                        .append("）\n");
+                if (count >= CONFIRMATION_CANDIDATE_LIMIT) {
+                    break;
+                }
+            }
+        }
+
+        if (count == 0) {
+            reply.append("- 暂时没有足够可靠的候选结果\n");
+        }
+
+        reply.append("\n请你确认要分析的是哪一个饰品，最好补充完整名称或磨损，例如“AK-47 | 红线（略有磨损）”。");
+        return reply.toString();
+    }
+
+    private record RagOptimizationResult(
+            boolean requiresConfirmation,
+            String reply,
+            String agentPrompt
+    ) {
+        private static RagOptimizationResult askConfirmation(String reply) {
+            return new RagOptimizationResult(true, reply, null);
+        }
+
+        private static RagOptimizationResult continueWith(String agentPrompt) {
+            return new RagOptimizationResult(false, null, agentPrompt);
         }
     }
 }
