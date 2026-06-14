@@ -1,9 +1,6 @@
 # CS饰品价格预测分析系统
 
 
-https://github.com/user-attachments/assets/e6475ce3-78f9-4d70-87c5-d68c888c7821
-
-
 面向 CS2 饰品市场的 AI 分析系统，帮助用户从自然语言问题出发，快速识别目标饰品、分析价格走势，并生成可解释的买入、持有或观望建议，用户持仓分析。
 
 用户不需要准确输入完整饰品名称。
@@ -15,6 +12,9 @@ https://github.com/user-attachments/assets/e6475ce3-78f9-4d70-87c5-d68c888c7821
 ```
 
 系统会结合 RAG 检索、饰品基础数据、价格走势和策略分析，自动定位目标饰品，并给出结构化的市场判断。
+
+## 项目演示
+https://github.com/user-attachments/assets/e6475ce3-78f9-4d70-87c5-d68c888c7821
 
 ## 项目亮点
 
