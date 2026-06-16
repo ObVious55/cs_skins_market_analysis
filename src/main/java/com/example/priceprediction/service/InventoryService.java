@@ -56,11 +56,13 @@ public class InventoryService {
         }
 
         Map<String, Object> message = new HashMap<>();
+        String requestId = UUID.randomUUID().toString();
+        message.put("requestId", requestId);
         message.put("steamId", steamId);
         message.put("timestamp", System.currentTimeMillis());
         // 使用 steamId 作为消息 key，保证同一用户的消息落到同一分区，便于顺序处理
         kafkaTemplate.send(INVENTORY_REFRESH_TOPIC, steamId, message);
-        log.info("已发送库存刷新消息到 Kafka, SteamID: {}", steamId);
+        log.info("Inventory refresh message sent to Kafka, SteamID: {}, requestId: {}", steamId, requestId);
         return true;
     }
 
@@ -248,7 +250,8 @@ public class InventoryService {
             });
 
         } catch (Exception e) {
-            log.error("同步库存异常: {}", e.getMessage());
+            log.error("Inventory refresh failed, steamId={}", steamId, e);
+            throw new IllegalStateException("Inventory refresh failed, steamId=" + steamId, e);
         }
     }
 
