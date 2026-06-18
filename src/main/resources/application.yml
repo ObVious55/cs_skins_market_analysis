@@ -74,7 +74,7 @@ embedding:
 
 qdrant:
   url: http://localhost:6333
-  collection-name: cs_item_rag_bge_m3
+  collection-name: cs_qaq_item_rag_bge_m3
   vector-size: 1024
 
 

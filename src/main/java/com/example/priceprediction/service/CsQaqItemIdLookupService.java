@@ -42,6 +42,13 @@ public class CsQaqItemIdLookupService {
         return Optional.empty();
     }
 
+    public Optional<CsQaqItemIdEntity> findByItemId(String itemId) {
+        if (!StringUtils.hasText(itemId) || !itemId.trim().matches("\\d+")) {
+            return Optional.empty();
+        }
+        return csQaqItemIdRepository.findByItemId(Long.valueOf(itemId.trim()));
+    }
+
     private List<String> buildSearchCandidates(String name) {
         Set<String> candidates = new LinkedHashSet<>();
 
@@ -102,7 +109,11 @@ public class CsQaqItemIdLookupService {
 
         return name
                 .replace("USP-S", "USP 消音版")
-                .replace("USP消音版", "USP 消音版");
+                .replace("USP消音版", "USP 消音版")
+                .replace("Glock-18","格洛克 18 型")
+                .replace("Galil AR","加利尔 AR")
+                .replace("★ Moto Gloves","摩托手套（★）")
+                .replace("★ Specialist Gloves","专业手套（★）");
     }
 
     private boolean hasExterior(String name) {

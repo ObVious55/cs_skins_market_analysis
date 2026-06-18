@@ -11,6 +11,8 @@ import java.util.stream.Collectors;
 public class TopKQueryOptimizer {
 
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^\\p{L}\\p{N}]+", Pattern.UNICODE_CHARACTER_CLASS);
+    private static final double DEFAULT_EXTERIOR_BOOST_STEP = 0.015;
+    private static final double STAT_TRAK_PENALTY = 0.1;
 
     /**
      * 精排并返回 topN 候选（按最终 score 降序）和 primary 候选
@@ -21,6 +23,8 @@ public class TopKQueryOptimizer {
         }
 
         String normQuery = normalize(userQuery);
+        boolean queryHasExterior = hasExplicitExterior(userQuery);
+        boolean queryHasStatTrak = hasExplicitStatTrak(userQuery);
         double maxVectorScore = results.stream().mapToDouble(VectorStoreClient.VectorSearchResult::getScore).max().orElse(1.0);
 
         List<RefinedCandidate> candidates = new ArrayList<>();
@@ -33,6 +37,12 @@ public class TopKQueryOptimizer {
             double metaConfidence = (r.getMetadata() != null && !r.getMetadata().isEmpty()) ? 1.0 : 0.0;
             // 简单加权：向量相似度权重0.5，词匹配0.4，metadata置信0.1
             double finalScore = 0.5 * vectorNorm + 0.4 * lexical + 0.1 * metaConfidence;
+            if (!queryHasExterior) {
+                finalScore += defaultExteriorBoost(r);
+            }
+            if (!queryHasStatTrak && isStatTrak(r)) {
+                finalScore -= STAT_TRAK_PENALTY;
+            }
 
             String itemId = extractItemId(r);
             candidates.add(new RefinedCandidate(itemId, name, finalScore, vectorScore, lexical, r.getMetadata()));
@@ -73,7 +83,7 @@ public class TopKQueryOptimizer {
         if (r == null) return "";
         Map<String, Object> m = r.getMetadata();
         if (m != null) {
-            Object v = firstNonNull(m.get("market_hash_name"), m.get("marketHashName"), m.get("name"), m.get("title"), m.get("item_name"));
+            Object v = firstNonNull(m.get("name"), m.get("cn_name"), m.get("title"), m.get("item_name"), m.get("market_hash_name"), m.get("marketHashName"));
             if (v != null) return v.toString();
         }
         if (r.getContent() != null && !r.getContent().isBlank()) {
@@ -125,5 +135,106 @@ public class TopKQueryOptimizer {
         }
         return Math.min(1.0, (double) match / Math.max(1, nameSet.size()));
     }
-}
 
+    private boolean hasExplicitExterior(String userQuery) {
+        String q = normalize(userQuery);
+        if (q.isBlank()) {
+            return false;
+        }
+
+        return q.contains("崭新出厂")
+                || q.contains("略磨")
+                || q.contains("略有磨损")
+                || q.contains("久经")
+                || q.contains("破损")
+                || q.contains("战痕")
+                || q.contains("factory new")
+                || q.contains("minimal wear")
+                || q.contains("field tested")
+                || q.contains("well worn")
+                || q.contains("battle scarred")
+                || q.contains("fn")
+                || q.contains("mw")
+                || q.contains("ft")
+                || q.contains("ww")
+                || q.contains("bs");
+    }
+
+    private double defaultExteriorBoost(VectorStoreClient.VectorSearchResult result) {
+        int priority = exteriorPriority(metadataText(result, "exterior_cn", "exterior_en"));
+        if (priority <= 0) {
+            return 0.0;
+        }
+
+        return priority * DEFAULT_EXTERIOR_BOOST_STEP;
+    }
+
+    private boolean hasExplicitStatTrak(String userQuery) {
+        String q = normalize(userQuery);
+        return q.contains("stattrak")
+                || q.contains("暗金")
+                || q.contains("计数")
+                || Arrays.asList(TOKEN_SPLIT.split(q)).contains("st");
+    }
+
+    private boolean isStatTrak(VectorStoreClient.VectorSearchResult result) {
+        String text = String.join(" ",
+                metadataAllText(result, "name", "cn_name", "title", "market_hash_name", "marketHashName"),
+                result == null || result.getContent() == null ? "" : result.getContent()
+        ).toLowerCase(Locale.ROOT);
+
+        return text.contains("stattrak") || text.contains("暗金");
+    }
+
+    private int exteriorPriority(String exterior) {
+        String e = normalize(exterior);
+        if (e.isBlank()) {
+            return 0;
+        }
+
+        if (e.contains("崭新") || e.contains("全新") || e.contains("factory new") || e.equals("fn")) {
+            return 5;
+        }
+        if (e.contains("略有") || e.contains("略磨") || e.contains("minimal wear") || e.equals("mw")) {
+            return 4;
+        }
+        if (e.contains("久经") || e.contains("field tested") || e.equals("ft")) {
+            return 3;
+        }
+        if (e.contains("破损") || e.contains("well worn") || e.equals("ww")) {
+            return 2;
+        }
+        if (e.contains("战痕") || e.contains("battle scarred") || e.equals("bs")) {
+            return 1;
+        }
+        return 0;
+    }
+
+    private String metadataText(VectorStoreClient.VectorSearchResult result, String... keys) {
+        if (result == null || result.getMetadata() == null) {
+            return "";
+        }
+        for (String key : keys) {
+            Object value = result.getMetadata().get(key);
+            if (value != null) {
+                return value.toString();
+            }
+        }
+        return "";
+    }
+
+    private String metadataAllText(VectorStoreClient.VectorSearchResult result, String... keys) {
+        if (result == null || result.getMetadata() == null) {
+            return "";
+        }
+
+        List<String> values = new ArrayList<>();
+        for (String key : keys) {
+            Object value = result.getMetadata().get(key);
+            if (value != null) {
+                values.add(value.toString());
+            }
+        }
+        return String.join(" ", values);
+    }
+}

@@ -7,6 +7,8 @@ import com.example.priceprediction.entity.ItemAliasMappingEntity;
 import com.example.priceprediction.rag.ItemRagRetriever;
 import com.example.priceprediction.rag.RefinedCandidate;
 import com.example.priceprediction.rag.RefinementResult;
+import com.example.priceprediction.react.ReActExecutionGuard;
+import com.example.priceprediction.react.ReActTurnContext;
 import com.example.priceprediction.service.CsQaqItemIdLookupService;
 import com.example.priceprediction.service.InventoryAgent;
 import com.example.priceprediction.service.ItemAliasLearningService;
@@ -23,22 +25,28 @@ import java.util.Optional;
 @RequestMapping("/api/ai")
 public class AiController {
 
-    private static final double RAG_CONFIRMATION_THRESHOLD = 0.60;
+    private static final double RAG_CONFIRMATION_THRESHOLD = 0.70;
     private static final int CONFIRMATION_CANDIDATE_LIMIT = 3;
 
     private final InventoryAgent inventoryAgent;
     private final ItemRagRetriever itemRagRetriever;
     private final CsQaqItemIdLookupService csQaqItemIdLookupService;
     private final ItemAliasLearningService itemAliasLearningService;
+    private final ReActExecutionGuard reActExecutionGuard;
+    private final ReActTurnContext reActTurnContext;
 
     public AiController(InventoryAgent inventoryAgent,
                         ItemRagRetriever itemRagRetriever,
                         CsQaqItemIdLookupService csQaqItemIdLookupService,
-                        ItemAliasLearningService itemAliasLearningService) {
+                        ItemAliasLearningService itemAliasLearningService,
+                        ReActExecutionGuard reActExecutionGuard,
+                        ReActTurnContext reActTurnContext) {
         this.inventoryAgent = inventoryAgent;
         this.itemRagRetriever = itemRagRetriever;
         this.csQaqItemIdLookupService = csQaqItemIdLookupService;
         this.itemAliasLearningService = itemAliasLearningService;
+        this.reActExecutionGuard = reActExecutionGuard;
+        this.reActTurnContext = reActTurnContext;
     }
 
     @PostMapping("/chat")
@@ -55,8 +63,14 @@ public class AiController {
                 log.info("RAG confidence is low; ask user to confirm before tool calling. message={}", userMessage);
                 return Result.success(optimization.reply());
             }
-
-            String response = inventoryAgent.chat(memoryId, optimization.agentPrompt());
+            reActExecutionGuard.beginTurn(memoryId);
+            reActTurnContext.bind(memoryId);
+            String response;
+            try {
+                response = inventoryAgent.chat(memoryId, optimization.agentPrompt());
+            } finally {
+                reActTurnContext.clear();
+            }
             return Result.success(response);
         } catch (Exception e) {
             log.error("RAG optimization failed", e);
@@ -84,10 +98,13 @@ public class AiController {
             }
 
             String ragPrimaryName = refinement.getPrimaryName();
+            String ragPrimaryItemId = refinement.getPrimaryItemId();
             double confidence = refinement.getConfidence();
-            log.info("RAG result, primaryName={}, confidence={}", ragPrimaryName, confidence);
+            log.info("RAG result, primaryItemId={}, primaryName={}, confidence={}",
+                    ragPrimaryItemId, ragPrimaryName, confidence);
 
-            if (ragPrimaryName == null || ragPrimaryName.isBlank()) {
+            if (ragPrimaryItemId == null || ragPrimaryItemId.isBlank()
+                    || ragPrimaryName == null || ragPrimaryName.isBlank()) {
                 return RagOptimizationResult.continueWith("""
                         用户原始问题：
                         %s
@@ -105,7 +122,7 @@ public class AiController {
             }
 
             Optional<CsQaqItemIdEntity> qaqItemOpt =
-                    csQaqItemIdLookupService.findByRagPrimaryName(ragPrimaryName);
+                    csQaqItemIdLookupService.findByItemId(ragPrimaryItemId);
 
             if (qaqItemOpt.isEmpty()) {
                 log.warn(
