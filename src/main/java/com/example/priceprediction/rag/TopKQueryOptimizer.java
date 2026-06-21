@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 public class TopKQueryOptimizer {
 
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^\\p{L}\\p{N}]+", Pattern.UNICODE_CHARACTER_CLASS);
-    private static final double DEFAULT_EXTERIOR_BOOST_STEP = 0.015;
+    private static final double DEFAULT_EXTERIOR_BOOST_STEP = 0.01;
     private static final double STAT_TRAK_PENALTY = 0.1;
 
     /**
@@ -36,7 +36,7 @@ public class TopKQueryOptimizer {
             double lexical = lexicalMatchScore(normQuery, name);
             double metaConfidence = (r.getMetadata() != null && !r.getMetadata().isEmpty()) ? 1.0 : 0.0;
             // 简单加权：向量相似度权重0.5，词匹配0.4，metadata置信0.1
-            double finalScore = 0.5 * vectorNorm + 0.4 * lexical + 0.1 * metaConfidence;
+            double finalScore = 0.4 * vectorNorm + 0.5 * lexical + 0.1 * metaConfidence;
             if (!queryHasExterior) {
                 finalScore += defaultExteriorBoost(r);
             }
@@ -96,7 +96,7 @@ public class TopKQueryOptimizer {
         if (r == null) return null;
         Map<String, Object> m = r.getMetadata();
         if (m != null) {
-            Object v = firstNonNull(m.get("item_id"), m.get("itemId"), m.get("id"), m.get("sku"));
+            Object v = firstNonNull(m.get("item_id"), m.get("itemId"), m.get("default_item_id"), m.get("id"), m.get("sku"));
             if (v != null) return v.toString();
         }
         return r.getId();
@@ -193,13 +193,13 @@ public class TopKQueryOptimizer {
         }
 
         if (e.contains("崭新") || e.contains("全新") || e.contains("factory new") || e.equals("fn")) {
-            return 5;
+            return 10;
         }
         if (e.contains("略有") || e.contains("略磨") || e.contains("minimal wear") || e.equals("mw")) {
-            return 4;
+            return 8;
         }
         if (e.contains("久经") || e.contains("field tested") || e.equals("ft")) {
-            return 3;
+            return 6;
         }
         if (e.contains("破损") || e.contains("well worn") || e.equals("ww")) {
             return 2;
