@@ -44,10 +44,11 @@ public class AiAgentConfig {
     }
 
     @Bean
-    public ChatMemoryProvider chatMemoryProvider() {
+    public ChatMemoryProvider chatMemoryProvider(RedisChatMemoryStore redisChatMemoryStore) {
         return memoryId -> MessageWindowChatMemory.builder()
                 .id(memoryId)
                 .maxMessages(20)
+                .chatMemoryStore(redisChatMemoryStore)
                 .build();
     }
 }
