@@ -1,0 +1,33 @@
+spring:
+  config:
+    import: optional:file:.env[.properties]
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/price_prediction?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=utf-8}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+
+cs:
+  item:
+    import-enabled: false
+    rag-index-enabled: false
+  qaq-item-id:
+    import-enabled: false
+
+app:
+  steam:
+    inventory-rate-limit:
+      permits: ${STEAM_INVENTORY_RATE_LIMIT_PERMITS:30}
+      interval: ${STEAM_INVENTORY_RATE_LIMIT_INTERVAL:1}
+      unit: ${STEAM_INVENTORY_RATE_LIMIT_UNIT:MINUTES}
+
+logging:
+  level:
+    root: INFO
+    com.example.priceprediction: INFO
