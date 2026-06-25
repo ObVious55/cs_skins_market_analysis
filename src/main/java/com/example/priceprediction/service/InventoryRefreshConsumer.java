@@ -56,7 +56,8 @@ public class InventoryRefreshConsumer {
             IllegalStateException exception = new IllegalStateException("Inventory refresh lock is held, retry later. requestId="
                     + requestId + ", steamId=" + steamId);
             jobService.markFailed(requestId, exception);
-            throw exception;
+            acknowledgment.acknowledge();
+            return;
         }
 
         try {
@@ -67,7 +68,9 @@ public class InventoryRefreshConsumer {
             acknowledgment.acknowledge();
         } catch (Exception e) {
             jobService.markFailed(requestId, e);
-            throw e;
+            log.warn("Inventory refresh job failed and will be acknowledged. requestId={}, steamId={}, err={}",
+                    requestId, steamId, e.getMessage());
+            acknowledgment.acknowledge();
         } finally {
             try {
                 redisTemplate.delete(lockKey);

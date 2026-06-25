@@ -37,6 +37,12 @@ public class InventoryService {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    @Autowired
+    private SteamApiCallMetrics steamApiCallMetrics;
+
+    @Autowired
+    private SteamInventoryRateLimiter steamInventoryRateLimiter;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final String INVENTORY_REFRESH_TOPIC = "inventory-refresh-topic";
@@ -47,6 +53,10 @@ public class InventoryService {
      * 手动刷新：发送消息到 Kafka，异步处理库存刷新
      */
     public boolean refreshInventory(String steamId) {
+        return refreshInventory(steamId, null);
+    }
+
+    public boolean refreshInventory(String steamId, String requestId) {
         String rateLimitKey = "inventory_refresh_rate_limit:" + steamId;
 
         Boolean locker = redisTemplate.opsForValue().setIfAbsent(rateLimitKey, "1", Duration.ofSeconds(60));
@@ -56,7 +66,9 @@ public class InventoryService {
         }
 
         Map<String, Object> message = new HashMap<>();
-        String requestId = UUID.randomUUID().toString();
+        if (requestId == null || requestId.isBlank()) {
+            requestId = UUID.randomUUID().toString();
+        }
         message.put("requestId", requestId);
         message.put("steamId", steamId);
         message.put("timestamp", System.currentTimeMillis());
@@ -86,6 +98,8 @@ public class InventoryService {
                 }
                 fetchedPages++;
                 String pageUrl = buildInventoryUrl(steamId, nextStartAssetId);
+                steamInventoryRateLimiter.acquire();
+                steamApiCallMetrics.recordInventoryApiCall();
                 String response = restTemplate.getForObject(pageUrl, String.class);
 
                 if (response == null || response.isBlank()) {

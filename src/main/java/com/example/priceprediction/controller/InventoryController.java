@@ -31,9 +31,12 @@ public class InventoryController {
      * 前端点击“刷新库存”按钮时调用，去爬取 Steam API
      */
     @PostMapping("/refresh")
-    public ResponseEntity<String> refreshMyInventory(@RequestParam String steamId) {
+    public ResponseEntity<String> refreshMyInventory(
+            @RequestParam String steamId,
+            @RequestParam(required = false) String requestId
+    ) {
         try {
-            boolean success = inventoryService.refreshInventory(steamId);
+            boolean success = inventoryService.refreshInventory(steamId, requestId);
             if (!success) {
                 return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body("库存刷新任务正在进行中，请稍后再试。");
             }
