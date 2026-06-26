@@ -4,15 +4,6 @@ import java.util.List;
 import java.util.Map;
 
 public interface VectorStoreClient {
-
-    void upsert(VectorRecord record);
-
-    void upsertBatch(List<VectorRecord> records);
-
-    List<VectorSearchResult> search(List<Float> queryVector, int topK);
-
-    boolean exists(String id);
-
     class VectorRecord {
         private String id;
         private List<Float> vector;

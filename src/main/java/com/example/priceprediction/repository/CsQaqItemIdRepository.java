@@ -16,6 +16,8 @@ public interface CsQaqItemIdRepository extends JpaRepository<CsQaqItemIdEntity, 
 
     Optional<CsQaqItemIdEntity> findByItemId(Long itemId);
 
+    List<CsQaqItemIdEntity> findByItemIdIn(List<Long> itemIds);
+
     Optional<CsQaqItemIdEntity> findByMarketHashName(String marketHashName);
 
     List<CsQaqItemIdEntity> findByCnNameContaining(String keyword, Pageable pageable);
