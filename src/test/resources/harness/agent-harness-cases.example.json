@@ -1,0 +1,20 @@
+[
+  {
+    "caseName": "dragon-lore-price",
+    "query": "龙狙现在多少钱",
+    "memoryId": "harness-user-001",
+    "expectedItemId": "REPLACE_WITH_REAL_ITEM_ID",
+    "expectedTools": ["getItemPriceData"],
+    "shouldAskConfirmation": false,
+    "allowPriceInAnswer": true
+  },
+  {
+    "caseName": "low-confidence-ambiguous-item",
+    "query": "那个蓝色的刀现在能买吗",
+    "memoryId": "harness-user-002",
+    "expectedItemId": null,
+    "expectedTools": [],
+    "shouldAskConfirmation": true,
+    "allowPriceInAnswer": false
+  }
+]
