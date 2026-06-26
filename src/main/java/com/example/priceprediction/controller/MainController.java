@@ -1,10 +1,8 @@
 package com.example.priceprediction.controller;
 
 import com.example.priceprediction.service.ApiDataService;
-import com.example.priceprediction.service.PredictionService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,12 +18,10 @@ import java.util.stream.StreamSupport;
 public class MainController {
 
     private final ApiDataService dataService;
-    private final PredictionService predictionService;
     private final ObjectMapper mapper = new ObjectMapper(); // 统一使用一个 mapper
 
-    public MainController(ApiDataService dataService, PredictionService predictionService) {
+    public MainController(ApiDataService dataService) {
         this.dataService = dataService;
-        this.predictionService = predictionService;
     }
 
     // 1. 搜索接口修复
@@ -96,35 +92,6 @@ public class MainController {
             return ResponseEntity.status(500).body("{\"success\":false,\"data\":[]}");
         }
     }
-
-    // 5. AI 预测接口 (保持当前逻辑)
-    @PostMapping(value = "/predict-price", produces = "application/json;charset=UTF-8")
-// 🌟 变化：把 JsonNode 换成 Map<String, Object>
-    public ResponseEntity<?> predictPrice(@RequestBody Map<String, Object> bodyMap) {
-        try {
-            // 1. 将 Map 转为 JsonNode，以便兼容你现有的 Service 逻辑
-            // 这里的转换是在内存中进行的，不会触发刚才那个反序列化异常
-            JsonNode requestBody = mapper.valueToTree(bodyMap);
-
-            // 2. 提取必要的 ID (从 Map 或生成的 Node 中提取均可)
-            String steamId = requestBody.path("steam_user_id").asText();
-
-            if (steamId.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("success", false, "error", "steamId is missing"));
-            }
-
-            // 3. 调用 Service
-            String prediction = predictionService.predictPrice(steamId, requestBody);
-
-            // 4. 返回结果
-            return ResponseEntity.ok(Map.of("success", true, "prediction", prediction));
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body(Map.of("success", false, "error", e.getMessage()));
-        }
-    }
-
 
 //    K线数据
     @GetMapping(value = "/kline-data/{itemId}", produces = "application/json;charset=UTF-8")

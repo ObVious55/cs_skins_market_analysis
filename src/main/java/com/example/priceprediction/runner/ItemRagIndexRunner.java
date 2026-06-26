@@ -13,6 +13,9 @@ public class ItemRagIndexRunner implements CommandLineRunner {
     @Value("${cs.item.rag-index-enabled:false}")
     private boolean enabled;
 
+    @Value("${cs.item.family-rag-index-enabled:false}")
+    private boolean familyEnabled;
+
     public ItemRagIndexRunner(ItemRagIndexService itemRagIndexService) {
         this.itemRagIndexService = itemRagIndexService;
     }
@@ -20,11 +23,16 @@ public class ItemRagIndexRunner implements CommandLineRunner {
     @Override
     public void run(String... args) {
         if (!enabled) {
-            System.out.println("CS 饰品 RAG 向量索引构建未开启");
+            System.out.println("CS item RAG index build is disabled.");
             return;
         }
 
-        System.out.println("开始构建 CS 饰品 RAG 向量索引");
-        itemRagIndexService.rebuildIndex();
+        if (!familyEnabled) {
+            System.out.println("CS item RAG index build is enabled, but no index target is selected.");
+            return;
+        }
+
+        System.out.println("Start building CS item family RAG index.");
+        itemRagIndexService.rebuildFamilyIndex();
     }
 }

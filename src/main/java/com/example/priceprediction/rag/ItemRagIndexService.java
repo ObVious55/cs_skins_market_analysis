@@ -12,22 +12,28 @@ public class ItemRagIndexService {
 
     private final ItemRagDocumentBuilder documentBuilder;
     private final EmbeddingClient embeddingClient;
-    private final VectorStoreClient vectorStoreClient;
+    private final QdrantVectorStoreClient vectorStoreClient;
 
     public ItemRagIndexService(ItemRagDocumentBuilder documentBuilder,
                                EmbeddingClient embeddingClient,
-                               VectorStoreClient vectorStoreClient) {
+                               QdrantVectorStoreClient vectorStoreClient) {
         this.documentBuilder = documentBuilder;
         this.embeddingClient = embeddingClient;
         this.vectorStoreClient = vectorStoreClient;
     }
 
     public void rebuildIndex() {
-        List<ItemRagDocument> documents = documentBuilder.buildAllDocuments();
-        System.out.println("准备写入向量数据库，RAG 文档数量：" + documents.size());
+        rebuildFamilyIndex();
+    }
+
+    public void rebuildFamilyIndex() {
+        rebuildDocuments("family", documentBuilder.buildFamilyDocuments());
+    }
+
+    private void rebuildDocuments(String indexName, List<ItemRagDocument> documents) {
+        System.out.println("Prepare to write " + indexName + " RAG documents: " + documents.size());
 
         List<VectorStoreClient.VectorRecord> batch = new ArrayList<>();
-
         int total = documents.size();
         int scannedCount = 0;
         int skippedCount = 0;
@@ -36,53 +42,47 @@ public class ItemRagIndexService {
         for (ItemRagDocument doc : documents) {
             scannedCount++;
 
-            if (vectorStoreClient.exists(doc.getDocId())) {
+            if (vectorStoreClient.familyExists(doc.getDocId())) {
                 skippedCount++;
-
                 if (scannedCount % 100 == 0) {
-                    System.out.println(
-                            "已扫描：" + scannedCount + "/" + total
-                                    + "，已跳过：" + skippedCount
-                                    + "，待新增：" + insertedCount
-                    );
+                    logProgress(indexName, scannedCount, total, skippedCount, insertedCount);
                 }
-
                 continue;
             }
 
             List<Float> vector = embeddingClient.embed(doc.getContent());
-
-            VectorStoreClient.VectorRecord record =
-                    new VectorStoreClient.VectorRecord(
-                            doc.getDocId(),
-                            vector,
-                            doc.getContent(),
-                            doc.getMetadata()
-                    );
-
-            batch.add(record);
+            batch.add(new VectorStoreClient.VectorRecord(
+                    doc.getDocId(),
+                    vector,
+                    doc.getContent(),
+                    doc.getMetadata()
+            ));
             insertedCount++;
 
             if (batch.size() >= BATCH_SIZE) {
-                vectorStoreClient.upsertBatch(batch);
+                vectorStoreClient.upsertFamilyBatch(batch);
                 batch.clear();
-
-                System.out.println(
-                        "已扫描：" + scannedCount + "/" + total
-                                + "，已跳过：" + skippedCount
-                                + "，已新增：" + insertedCount
-                );
+                logProgress(indexName, scannedCount, total, skippedCount, insertedCount);
             }
         }
 
         if (!batch.isEmpty()) {
-            vectorStoreClient.upsertBatch(batch);
+            vectorStoreClient.upsertFamilyBatch(batch);
             batch.clear();
         }
 
-        System.out.println("CS 饰品 RAG 向量索引构建完成");
-        System.out.println("扫描总数量：" + scannedCount);
-        System.out.println("跳过已有数量：" + skippedCount);
-        System.out.println("新增数量：" + insertedCount);
+        System.out.println("RAG index build completed: " + indexName);
+        System.out.println("Scanned: " + scannedCount);
+        System.out.println("Skipped existing: " + skippedCount);
+        System.out.println("Inserted: " + insertedCount);
+    }
+
+    private void logProgress(String indexName, int scannedCount, int total, int skippedCount, int insertedCount) {
+        System.out.println(
+                "RAG index=" + indexName
+                        + ", scanned=" + scannedCount + "/" + total
+                        + ", skipped=" + skippedCount
+                        + ", inserted=" + insertedCount
+        );
     }
 }

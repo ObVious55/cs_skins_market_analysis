@@ -16,8 +16,8 @@ public class QdrantVectorStoreClient implements VectorStoreClient {
     @Value("${qdrant.url:http://localhost:6333}")
     private String qdrantUrl;
 
-    @Value("${qdrant.collection-name:cs_item_rag}")
-    private String collectionName;
+    @Value("${qdrant.family-collection-name:cs_item_family_rag}")
+    private String familyCollectionName;
 
     @Value("${qdrant.vector-size:1024}")
     private int vectorSize;
@@ -28,10 +28,15 @@ public class QdrantVectorStoreClient implements VectorStoreClient {
 
     @PostConstruct
     public void initCollection() {
-        createCollectionIfNotExists();
+        createCollectionIfNotExists(familyCollectionName);
     }
 
-    private void createCollectionIfNotExists() {
+    private void createCollectionIfNotExists(String targetCollectionName) {
+        if (targetCollectionName == null || targetCollectionName.isBlank()) {
+            return;
+        }
+
+        String collectionName = targetCollectionName.trim();
         String url = qdrantUrl + "/collections/" + collectionName;
 
         try {
@@ -66,18 +71,16 @@ public class QdrantVectorStoreClient implements VectorStoreClient {
         }
     }
 
-    @Override
-    public void upsert(VectorRecord record) {
-        upsertBatch(List.of(record));
+    public void upsertFamilyBatch(List<VectorRecord> records) {
+        upsertBatch(familyCollectionName, records);
     }
 
-    @Override
-    public void upsertBatch(List<VectorRecord> records) {
+    private void upsertBatch(String targetCollectionName, List<VectorRecord> records) {
         if (records == null || records.isEmpty()) {
             return;
         }
 
-        String url = qdrantUrl + "/collections/" + collectionName + "/points?wait=true";
+        String url = qdrantUrl + "/collections/" + targetCollectionName + "/points?wait=true";
 
         List<Map<String, Object>> points = new ArrayList<>();
 
@@ -104,10 +107,13 @@ public class QdrantVectorStoreClient implements VectorStoreClient {
         restTemplate.put(url, body);
     }
 
-    @Override
+    public List<VectorSearchResult> searchFamily(List<Float> queryVector, int topK) {
+        return search(familyCollectionName, queryVector, topK);
+    }
+
     @SuppressWarnings("unchecked")
-    public List<VectorSearchResult> search(List<Float> queryVector, int topK) {
-        String url = qdrantUrl + "/collections/" + collectionName + "/points/search";
+    private List<VectorSearchResult> search(String targetCollectionName, List<Float> queryVector, int topK) {
+        String url = qdrantUrl + "/collections/" + targetCollectionName + "/points/search";
 
         Map<String, Object> body = new HashMap<>();
         body.put("vector", queryVector);
@@ -145,10 +151,13 @@ public class QdrantVectorStoreClient implements VectorStoreClient {
         return results;
     }
 
-    @Override
-    public boolean exists(String id) {
+    public boolean familyExists(String id) {
+        return exists(familyCollectionName, id);
+    }
+
+    private boolean exists(String targetCollectionName, String id) {
         long pointId = stableNumericId(id);
-        String url = qdrantUrl + "/collections/" + collectionName + "/points/" + pointId;
+        String url = qdrantUrl + "/collections/" + targetCollectionName + "/points/" + pointId;
 
         try {
             restTemplate.getForObject(url, Map.class);

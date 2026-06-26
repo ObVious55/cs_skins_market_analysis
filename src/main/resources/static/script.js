@@ -302,7 +302,7 @@ function updatePriceChart(itemInfo) {
     `;
 }
 
-// 处理价格预测 - 改为调用 Agent
+// 处理价格预测 调用 Agent
 async function handlePredict() {
     if (!currentItemData) return alert('请先搜索并选择饰品');
 

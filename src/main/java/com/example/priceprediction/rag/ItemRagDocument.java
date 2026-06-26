@@ -6,9 +6,8 @@ import java.util.Map;
 public class ItemRagDocument {
 
     private String docId;
-    private String docType; // ITEM_VARIANT / ITEM_FAMILY
+    private String docType;
 
-    private Long nameId;
     private List<Long> nameIds;
 
     private String familyKey;
@@ -16,9 +15,6 @@ public class ItemRagDocument {
     private String weapon;
     private String skinCn;
     private String skinEn;
-    private String exteriorCn;
-    private String exteriorEn;
-
     private String title;
     private String content;
 
@@ -38,14 +34,6 @@ public class ItemRagDocument {
 
     public void setDocType(String docType) {
         this.docType = docType;
-    }
-
-    public Long getNameId() {
-        return nameId;
-    }
-
-    public void setNameId(Long nameId) {
-        this.nameId = nameId;
     }
 
     public List<Long> getNameIds() {
@@ -86,22 +74,6 @@ public class ItemRagDocument {
 
     public void setSkinEn(String skinEn) {
         this.skinEn = skinEn;
-    }
-
-    public String getExteriorCn() {
-        return exteriorCn;
-    }
-
-    public void setExteriorCn(String exteriorCn) {
-        this.exteriorCn = exteriorCn;
-    }
-
-    public String getExteriorEn() {
-        return exteriorEn;
-    }
-
-    public void setExteriorEn(String exteriorEn) {
-        this.exteriorEn = exteriorEn;
     }
 
     public String getTitle() {
