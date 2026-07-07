@@ -10,8 +10,16 @@ app:
   openai:
     base-url: ${OPENAI_BASE_URL:https://api.deepseek.com}
     api-key: ${OPENAI_API_KEY}
+    model-name: ${OPENAI_MODEL_NAME:deepseek-v4-flash}
+    temperature: ${OPENAI_TEMPERATURE:0.1}
+    intent-model-name: ${OPENAI_INTENT_MODEL_NAME:deepseek-v4-flash}
+    intent-temperature: ${OPENAI_INTENT_TEMPERATURE:0.0}
   steam:
     api-key: ${STEAM_API_KEY}
+    inventory-rate-limit:
+      permits: ${STEAM_INVENTORY_RATE_LIMIT_PERMITS:10}
+      interval: ${STEAM_INVENTORY_RATE_LIMIT_INTERVAL:1}
+      unit: ${STEAM_INVENTORY_RATE_LIMIT_UNIT:MINUTES}
 
 spring:
   # Redis 配置
@@ -56,12 +64,14 @@ spring:
         spring.json.trusted.packages: "*"
     listener:
       ack-mode: manual
+      concurrency: ${KAFKA_LISTENER_CONCURRENCY:3}
 
 cs:
   item:
     import-enabled: false
     json-location: classpath*:data/CS_item/steam/*.json
     rag-index-enabled: false
+    family-rag-index-enabled: false
   qaq-item-id:
     import-enabled: false
     json-location: classpath*:data/CS_item/qaq/*.json
@@ -70,12 +80,12 @@ embedding:
   provider: ollama
   ollama:
     url: http://localhost:11434
-    model: bge-m3
+    model: quentinz/bge-small-zh-v1.5:latest
 
 qdrant:
   url: http://localhost:6333
-  collection-name: cs_qaq_item_rag_bge_m3
-  vector-size: 1024
+  family-collection-name: cs_qaq_item_family_rag_bge_small_zh_v15
+  vector-size: 512
 
 
 

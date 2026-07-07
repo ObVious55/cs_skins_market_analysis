@@ -50,7 +50,7 @@ public class MainController {
         }
     }
 
-    // 2. 价格详情接口修复 (最核心的 500 报错来源)
+    // 2. 价格详情接口修复
     @GetMapping(value = "/price-data/{itemId}", produces = "application/json;charset=UTF-8")
     public ResponseEntity<?> getPriceData(@PathVariable String itemId) {
         try {
@@ -77,7 +77,7 @@ public class MainController {
         }
     }
 
-    // 4. 热门饰品接口 (保持你的修复版，并增强健壮性)
+    // 4. 热门饰品接口
     @GetMapping(value = "/hot-items", produces = "application/json;charset=UTF-8")
     public ResponseEntity<?> getHotItems() {
         try {
